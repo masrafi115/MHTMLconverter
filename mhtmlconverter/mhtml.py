@@ -183,9 +183,21 @@ def mhtml_to_html(mhtmlfile: str, htmlfile: str, resourcesdir: str = "_resources
             htmlcontent = part.get_payload(decode=True).decode()
 
         if part.get_content_type().startswith("image"):
-            if not part.get_content_type().endswith("css"):
+            # ignore svg and css images, they're just icons
+            if not part.get_content_type().endswith("css") and not part.get_content_type().endswith("svg+xml"):
+                content_transfer_encoding = part['Content-Transfer-Encoding'].strip()
+                # print("Type: ".join(part.get_content_type()))
                 urlname = part['Content-Location'].strip()
-                imagecontent = base64.b64decode(part.get_payload())
+                # Some Resource url doesnt have extension, if not then use header content type value
+                if not urlname.endswith(".png") or urlname.endswith(".jpeg") or urlname.endswith(".gif") or urlname.endswith(".webp"):
+                    urlname = urlname + "." + part.get_content_type().split('/')[-1]
+                #  Some mht files have raw PNG/JPEG etc parts instead of base64 encode 
+                if content_transfer_encoding.startswith("binary"):
+                    imagecontent = part.get_payload(decode=True)
+                    # print(part.get_payload().encode())
+                # Some mht files have base64 encoded parts instead of raw PNG/JPEG etc 
+                elif content_transfer_encoding.startswith("base64"):
+                    imagecontent = base64.b64decode(part.get_payload())
                 img_content_dict[urlname]=imagecontent
                 ### TODO: CSS
 
@@ -194,7 +206,9 @@ def mhtml_to_html(mhtmlfile: str, htmlfile: str, resourcesdir: str = "_resources
     resourcesdir = fileutility.to_absolute(resourcesdir, htmlfile) # Path to resourcedir
 
     for i,content in img_content_dict.items():
-        rewrited_path=fileutility.get_res_path(i)
+        reserved_pattern = r'[<>:"|?*]'
+        # Replace reserved characters with underscores
+        rewrited_path=re.sub(reserved_pattern, '_', fileutility.get_res_path(i))
         fileutility.create_file(rewrited_path,resourcesdir,content)
 
         ### Rewrite with relative reference to htmlfile dir
